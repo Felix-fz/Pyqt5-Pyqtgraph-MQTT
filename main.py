@@ -30,13 +30,13 @@ TITLE = "电化学工作站"
 
 # 用户信息
 port = 1883
-topic = "test"
+sub_topic = "test"  # 订阅的主题
+pub_topic = "pub"  # 发布主题
 # 随机生成Client ID
 client_id = f'ternimal-mqtt-{random.randint(0, 100)}'
 
 
 class PyQt_Serial(QTabWidget):
-
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -68,7 +68,9 @@ class PyQt_Serial(QTabWidget):
         self.cmdstr = ''
         self.reverseFlag = 0  # 双向标志
         self.funCnt = 0
-        # self.int_voltage = 0
+
+        self.scan_1_finish_flag = 0
+        self.scan_2_finish_flag = 0
 
         self.broker = "mqtt.coplemqtt.xyz"
         self.du = 0
@@ -106,10 +108,11 @@ class PyQt_Serial(QTabWidget):
         ######## 编码方式 ##########
 
         ######## Open & Close UART and so on##########
-        self.openButton = QPushButton('打开串口')
-        self.openButton.setFixedWidth(80)
-        self.closeButton = QPushButton('关闭串口')
-        self.closeButton.setFixedWidth(80)
+        # self.openButton = QPushButton('打开串口')
+        # self.openButton.setFixedWidth(80)
+        # self.closeButton = QPushButton('关闭串口')
+        # self.closeButton.setFixedWidth(80)
+
         self.clearReceivedButton = QPushButton('清空数据打印')
         self.clearReceivedButton.setFixedWidth(100)
         self.stopShowingButton = QPushButton('停止显示')
@@ -128,16 +131,16 @@ class PyQt_Serial(QTabWidget):
         self.closeButton.setFixedWidth(80)
 
         self.scan_1Button = QPushButton('1-Scan')
-        self.openButton.setFocus()
         self.scan_1Button.setFixedWidth(100)
         self.PlotButton = QPushButton('2-Scan')
         self.PlotButton.setFixedWidth(100)
 
         self.connectButton = QPushButton('connect')
+        self.connectButton.setFocus()
         self.connectButton.setFixedWidth(100)
-
         self.disconnectButton = QPushButton('disconnect')
         self.disconnectButton.setFixedWidth(100)
+
 
         self.setParaButton = QPushButton('设置参数')
         self.setParaButton.setFixedWidth(100)
@@ -188,7 +191,7 @@ class PyQt_Serial(QTabWidget):
         # dt
         self.dtLabel = QLabel('dt(ms):')
         self.dtLabel.setFixedHeight(30)
-        self.dtEdit = QLineEdit('10')
+        self.dtEdit = QLineEdit('15')
         self.dtEdit.setFixedHeight(30)
         self.dtEdit.setFixedWidth(80)
 
@@ -219,6 +222,7 @@ class PyQt_Serial(QTabWidget):
         self.doubleSendTimer = QTimer()
 
         self.closeButton.setEnabled(False)
+        self.disconnectButton.setEnabled(False)
         self.sendButton.setEnabled(False)
 
     def CreateLayout(self):  # 布局
@@ -282,8 +286,7 @@ class PyQt_Serial(QTabWidget):
         self.sendButton.clicked.connect(self.on_sendData)  # 发送数据
         self.refreshComButton.clicked.connect(self.on_refreshCom)  # 刷新串口状态
         self.clearInputButton.clicked.connect(self.inputEdit.clear)  # 清空输入
-        self.clearReceivedButton.clicked.connect(
-            self.receivedDataEdit.clear)  # 清空接收
+        self.clearReceivedButton.clicked.connect(self.receivedDataEdit.clear)  # 清空接收
         self.stopShowingButton.clicked.connect(self.on_stopShowing)  # 停止显示
         self.clearCouterButton.clicked.connect(self.on_clearCouter)  # 清空计数
 
@@ -298,11 +301,11 @@ class PyQt_Serial(QTabWidget):
 
         self.updateTimer.timeout.connect(self.on_updateTimer)  # 界面刷新
         self.hexShowingCheck.stateChanged.connect(
-            self.on_hexShowingChecked)  # 十六进制显示
+        self.on_hexShowingChecked)  # 十六进制显示
         self.timerPeriodEdit.textChanged.connect(self.on_timerSendChecked)
 
         self.hexSendingCheck.stateChanged.connect(
-            self.on_hexSendingChecked)  # 十六进制发送
+        self.on_hexSendingChecked)  # 十六进制发送
 
         self.urlEdit.textChanged.connect(self.on_setUrl)
         self.connectButton.clicked.connect(self.mqtt_run)
@@ -334,7 +337,7 @@ class PyQt_Serial(QTabWidget):
 
     def on_plot(self):
         timer = QTimer(self)
-        # timer.timeout.connect(self.update_plot)
+        timer.timeout.connect(self.update_plot)
         timer.start(0)
 
     def update_plot(self):
@@ -345,6 +348,21 @@ class PyQt_Serial(QTabWidget):
             pg.QtGui.QApplication.processEvents()
             self.pw.plot(cmd_list_re, data_list, pen=pg.mkPen(color='r', width=1.5), clear=True,
                          symbol=None)  # symbol设置显示点的形状
+            if (cmd_list_re[-1] == self.U1) and (self.scan_1_finish_flag == 1):
+                cmd_list_re.clear()
+                cmdlist.clear()
+                data_list.clear()
+                datalist.clear()
+                self.scan_1_finish_flag = 0
+                QMessageBox.information(self, "完成", "单向扫描完成！")
+
+            elif (cmd_list_re[-1] == int(self.U0Edit.text())) and (self.scan_2_finish_flag == 1):
+                cmd_list_re.clear()
+                cmdlist.clear()
+                data_list.clear()
+                datalist.clear()
+                self.scan_2_finish_flag == 0
+                QMessageBox.information(self, "完成", "双向扫描完成！")
             num = num + 1
         pass
 
@@ -352,7 +370,7 @@ class PyQt_Serial(QTabWidget):
         print("clear")
         reply = QMessageBox.information(self, '清空绘图', '是否清空绘图？',
                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-        if (reply == QMessageBox.Yes):
+        if reply == QMessageBox.Yes:
             datalist.clear()
             cmdlist.clear()
             data_list = list(float(i) for i in datalist)
@@ -387,7 +405,10 @@ class PyQt_Serial(QTabWidget):
 
     def on_setQinfo(self):
         self.cmdstr = ''
-        QMessageBox.information(self, "设置参数", "设置成功！")
+        if (self.dt < 14):
+            QMessageBox().information(None, "提示", "时间间隔小于14ms串口数据易丢失！")
+        else:
+            QMessageBox.information(self, "设置参数", "设置成功！")
 
     def on_openSerial(self):
         comName = self.comNameCombo.currentText()
@@ -481,11 +502,10 @@ class PyQt_Serial(QTabWidget):
         self.sendCount += n
 
     def on_receiveData(self):
-        global datalist,cmdlist
+        global datalist, cmdlist
         try:
             '''将串口接收到的QByteArray格式数据转为bytes,并用gkb或utf8解码'''
-            receivedData = bytes(self.com.readAll())  # 使用串口接收，加判断
-
+            receivedData = bytes(self.com.readAll())  # 使用串口接收，读到换行符即停readLine()比较慢，数据变少
             print(receivedData)
         except:
             QMessageBox.critical(self, '严重错误', '串口接收数据错误')
@@ -502,11 +522,10 @@ class PyQt_Serial(QTabWidget):
 
                     cmd_list = self.decodeFrame(cmd_str)
                     value_list = self.decodeFrame(value_str)
-                    print(cmd_list,value_list)
+                    print(cmd_list, value_list)
 
                     datalist.extend(value_list)
                     cmdlist.extend(cmd_list)  # 注意追加的变量
-                    self.update_plot()
 
                     self.receivedDataEdit.insertPlainText(receivedData)  # 回显
                 else:
@@ -540,23 +559,20 @@ class PyQt_Serial(QTabWidget):
         ex.export(fileName=fileName)
 
     def create_cmd_frame(self):
+        self.scan_1_finish_flag = 1
+        self.scan_2_finish_flag = 0
         self.funCnt += 1
-        # if self.U0 == int(self.U0Edit.text()):
-        #     self.U0 = self.U0
         if (self.funCnt == 1) and (self.U0 == int(self.U0Edit.text())):
             self.U0 = self.U0
         elif (self.funCnt > 1) and (self.U0 < self.U1):
             self.U0 += self.du
         else:
             self.on_scan_1Button()
-            QMessageBox.information(self, "完成", "单向扫描完成")
 
         if self.U0 >= 0:
-            # self.cmdstr = 'P:' + '%4d' % self.U0 + '\n'
             self.cmdstr = 'P:' + str(self.U0).zfill(4) + '\n'
         else:
             self.cmdstr = 'N:' + str(-self.U0).zfill(4) + '\n'
-        # print(self.cmdstr)
 
     def decodeFrame(self, frame_arr):  # 解帧函数
         if frame_arr[0] == 'P':  # 判断命令帧格式
@@ -575,10 +591,14 @@ class PyQt_Serial(QTabWidget):
                 n = 0
             self.sendCount += n
         elif self.wifiFlag == 1:
-            self.mqtt_publish(myclient, 'PUB', str)
+            if len(self.cmdstr) != 0:  # 防止出现空帧
+                self.mqtt_publish(myclient, pub_topic, self.cmdstr)
+                # print(self.cmdstr)
         self.create_cmd_frame()
 
     def on_doubleCmdFrame(self):
+        self.scan_1_finish_flag = 0
+        self.scan_2_finish_flag = 1
         if (self.U0 < self.U1) and (self.reverseFlag == 0):
             self.U0 += self.du
         elif (self.U0 == self.U1) and (self.reverseFlag == 0):
@@ -589,7 +609,7 @@ class PyQt_Serial(QTabWidget):
         else:
             self.reverseFlag = 0
             self.on_scan_2Button()
-            QMessageBox.information(self, "完成", "双向扫描完成")
+            # QMessageBox.information(self, "完成", "双向扫描完成")
 
         if self.U0 >= 0:
             self.cmdstr = 'P:' + str(self.U0).zfill(4) + '\n'
@@ -597,16 +617,15 @@ class PyQt_Serial(QTabWidget):
             self.cmdstr = 'N:' + str(-self.U0).zfill(4) + '\n'
 
     def on_doubleMqttSendData(self):
-        # global cmd_list
         if self.wifiFlag == 0:
             if len(self.cmdstr) != 0:  # 防止出现空帧
                 n = self.com.write(self.cmdstr.encode("utf-8"))  # 起始处多发个0  double mqtt write
-                # cmd_list = self.decodeFrame(self.cmdstr)
             else:
                 n = 0
             self.sendCount += n
         elif self.wifiFlag == 1:
-            self.mqtt_publish(myclient, 'PUB', str)
+            if len(self.cmdstr) != 0:  # 防止出现空帧
+                self.mqtt_publish(myclient, pub_topic, self.cmdstr)
         self.on_doubleCmdFrame()
 
     def on_scan_1Button(self):
@@ -618,7 +637,6 @@ class PyQt_Serial(QTabWidget):
             self.funCnt = 0  # 第二次发送命令和第一次不同
             self.U0 = int(self.U0Edit.text())
             self.mqttSendTimer.stop()
-
             self.scan_1_button_flag = 0
 
     def on_scan_2Button(self):
@@ -656,21 +674,19 @@ class PyQt_Serial(QTabWidget):
 
     def _subscribe(self, client: mqtt_client):  # 订阅函数
         def on_message(client, userdata, msg):  # 收到消息调用
-            receivedData = msg.payload.decode()  # 使用MQTT接收，加判断
-            if len(receivedData) > 0:
-                if receivedData[0] == 'P':  # 判断命令帧格式
-                    print("P")
-                    pdat = re.sub(r'^\D\:', '+', receivedData)  # 使用正则表达式decode命令帧
-                    data_list = re.findall(r"\+\d?.*\d+", pdat)
-                elif receivedData[0] == 'N':
-                    print("N")
-                    ndat = re.sub(r'^\D\:', '-', receivedData)
-                    data_list = re.findall(r"-\d?.*\d+", ndat)
-                datalist.extend(data_list)
-                # cmdlist.extend(cmd_list)  # 注意追加的变量
-                self.update_plot()
+            receivedData = msg.payload.decode(self.encoding, 'ignore')  # 使用MQTT接收，加判断
+            received_split_str = receivedData.split(',')
+            cmd_str = received_split_str[0][1:]
+            value_str = received_split_str[1][:-1]
+            cmd_list = self.decodeFrame(cmd_str)
+            value_list = self.decodeFrame(value_str)
 
-        client.subscribe(topic)
+            datalist.extend(value_list)
+            cmdlist.extend(cmd_list)  # 注意追加的变量
+
+            print(value_list, cmd_list)
+
+        client.subscribe(sub_topic)
         client.on_message = on_message
 
     # 发布函数
@@ -681,9 +697,8 @@ class PyQt_Serial(QTabWidget):
         global myclient
         if self.connectFlag == 1:
             myclient = self._connect_mqtt()  # 连接服务器
-            # self.mqtt_publish(client, 'PUB', "helloCople")
             self._subscribe(myclient)  # 订阅消息
-            QMessageBox.information(self, "连接提示", ("连接成功！\n且已订阅" + topic + "！"))
+            QMessageBox.information(self, "连接提示", ("连接成功！\n且已订阅" + sub_topic + "！"))
             self.wifiFlag = 1
             datalist.clear()  # 清空list
             cmdlist.clear()
@@ -693,10 +708,14 @@ class PyQt_Serial(QTabWidget):
             myclient.disconnect()
             myclient.loop_stop(force=False)
             self.connectFlag = 1
+        self.connectButton.setEnabled(False)
+        self.disconnectButton.setEnabled(True)
 
     def mqtt_stop(self):
         self.connectFlag = 0
         self.mqtt_run()
+        self.connectButton.setEnabled(True)
+        self.disconnectButton.setEnabled(False)
 
 
 if __name__ == '__main__':
