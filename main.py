@@ -30,8 +30,8 @@ TITLE = "电化学工作站"
 
 # 用户信息
 port = 1883
-sub_topic = "test"  # 订阅的主题
-pub_topic = "pub"  # 发布主题
+# sub_topic = "test"  # 订阅的主题
+# pub_topic = "pub"  # 发布主题
 # 随机生成Client ID
 client_id = f'ternimal-mqtt-{random.randint(0, 100)}'
 
@@ -40,11 +40,17 @@ class PyQt_Serial(QTabWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        self.tableWidget = QTableWidget()  # 创建一个列表
+        self.PlotLayout = QGridLayout()
+        self.ResultLayout = QHBoxLayout()  # 创建水平布局文件
         self.DataTab = QWidget()
+        self.ResultTab = QWidget()
         self.PlotTab = QWidget()
 
         self.addTab(self.DataTab, "控制台")
+        self.addTab(self.ResultTab, "测试结果")
         self.addTab(self.PlotTab, "数据打印")
+
 
         self.CreateItems()
         self.CreateLayout()
@@ -72,11 +78,22 @@ class PyQt_Serial(QTabWidget):
         self.scan_1_finish_flag = 0
         self.scan_2_finish_flag = 0
 
-        self.broker = "mqtt.coplemqtt.xyz"
+        self.broker = ""
+        self.pubTopic = ""
+        self.subTopic = ""
         self.du = 0
         self.U0 = 0
         self.U1 = 0
         self.dt = 0
+
+        # measure
+        self.measure_Ip = 0
+        self.measure_Ep = 0
+        self.measure_Ah = 0
+
+        # set Value
+        self.set_high_Ev = 0
+        self.set_low_Ev = 0
 
     def CreateItems(self):
         self.com = QSerialPort()
@@ -108,10 +125,6 @@ class PyQt_Serial(QTabWidget):
         ######## 编码方式 ##########
 
         ######## Open & Close UART and so on##########
-        # self.openButton = QPushButton('打开串口')
-        # self.openButton.setFixedWidth(80)
-        # self.closeButton = QPushButton('关闭串口')
-        # self.closeButton.setFixedWidth(80)
 
         self.clearReceivedButton = QPushButton('清空数据打印')
         self.clearReceivedButton.setFixedWidth(100)
@@ -141,7 +154,6 @@ class PyQt_Serial(QTabWidget):
         self.disconnectButton = QPushButton('disconnect')
         self.disconnectButton.setFixedWidth(100)
 
-
         self.setParaButton = QPushButton('设置参数')
         self.setParaButton.setFixedWidth(100)
 
@@ -166,6 +178,18 @@ class PyQt_Serial(QTabWidget):
         self.urlEdit = QLineEdit('mqtt.coplemqtt.xyz')
         self.urlEdit.setFixedHeight(30)
         self.urlEdit.setFixedWidth(200)
+
+        self.pub_topicLabel = QLabel('Pub Topic:')
+        self.pub_topicLabel.setFixedHeight(30)
+        self.pubTopicEdit = QLineEdit('pub')
+        self.pubTopicEdit.setFixedHeight(30)
+        self.pubTopicEdit.setFixedWidth(80)
+
+        self.sub_topicLabel = QLabel('Sub Topic:')
+        self.sub_topicLabel.setFixedHeight(30)
+        self.subTopicEdit = QLineEdit('test')
+        self.subTopicEdit.setFixedHeight(30)
+        self.subTopicEdit.setFixedWidth(80)
 
         # du
         self.duLabel = QLabel('du:')
@@ -204,8 +228,7 @@ class PyQt_Serial(QTabWidget):
         self.timerPeriodEdit = QLineEdit('1000')
         self.timerPeriodEdit.setFixedHeight(20)
         self.timerPeriodEdit.setFixedWidth(50)
-        # self.spacer = QSpacerItem(
-        #     5, 5, QSizePolicy.Line, QSizePolicy.Minimum)
+
         self.clearInputButton = QPushButton('清空重填')
         self.clearCouterButton = QPushButton('计数清零')
         ######## 数据显示 ##########
@@ -237,46 +260,58 @@ class PyQt_Serial(QTabWidget):
 
         self.mainLayout.addWidget(self.urlLabel, 3, 0, 1, 1)
         self.mainLayout.addWidget(self.urlEdit, 4, 0, 1, 2)
-        self.mainLayout.addWidget(self.connectButton, 5, 0)
-        self.mainLayout.addWidget(self.disconnectButton, 5, 1)
+
+        self.mainLayout.addWidget(self.pub_topicLabel, 5, 0)
+        self.mainLayout.addWidget(self.pubTopicEdit, 5, 1)
+        self.mainLayout.addWidget(self.sub_topicLabel, 6, 0)
+        self.mainLayout.addWidget(self.subTopicEdit, 6, 1)
+
+        self.mainLayout.addWidget(self.connectButton, 7, 0)
+        self.mainLayout.addWidget(self.disconnectButton, 7, 1)
         # self.mainLayout.addItem(self.spacer,6,0,1,1)
-        self.mainLayout.addWidget(self.duLabel, 6, 0, 1, 1, QtCore.Qt.AlignJustify)
-        self.mainLayout.addWidget(self.duEdit, 6, 1, 1, 2)
-        self.mainLayout.addWidget(self.U0Label, 7, 0, 1, 1, QtCore.Qt.AlignJustify)
-        self.mainLayout.addWidget(self.U0Edit, 7, 1, 1, 2)
-        self.mainLayout.addWidget(self.U1Label, 8, 0, 1, 1, QtCore.Qt.AlignJustify)
-        self.mainLayout.addWidget(self.U1Edit, 8, 1, 1, 2)
-        self.mainLayout.addWidget(self.dtLabel, 9, 0, 1, 1, QtCore.Qt.AlignJustify)
-        self.mainLayout.addWidget(self.dtEdit, 9, 1, 1, 2)
-        self.mainLayout.addWidget(self.setParaButton, 10, 0)
-        self.mainLayout.addWidget(self.scan_1Button, 11, 0)
-        self.mainLayout.addWidget(self.PlotButton, 11, 1)  # 1-Scan & 2-Scan
-        self.mainLayout.addWidget(self.saveFigButton, 12, 0)
-        self.mainLayout.addWidget(self.clearFigButton, 12, 1)
-        self.PlotLayout = QGridLayout()
+        self.mainLayout.addWidget(self.duLabel, 8, 0, 1, 1, QtCore.Qt.AlignJustify)
+        self.mainLayout.addWidget(self.duEdit, 8, 1, 1, 2)
+        self.mainLayout.addWidget(self.U0Label, 9, 0, 1, 1, QtCore.Qt.AlignJustify)
+        self.mainLayout.addWidget(self.U0Edit, 9, 1, 1, 2)
+        self.mainLayout.addWidget(self.U1Label, 10, 0, 1, 1, QtCore.Qt.AlignJustify)
+        self.mainLayout.addWidget(self.U1Edit, 10, 1, 1, 2)
+        self.mainLayout.addWidget(self.dtLabel, 11, 0, 1, 1, QtCore.Qt.AlignJustify)
+        self.mainLayout.addWidget(self.dtEdit, 11, 1, 1, 2)
+        self.mainLayout.addWidget(self.setParaButton, 12, 0)
+        self.mainLayout.addWidget(self.scan_1Button, 13, 0)
+        self.mainLayout.addWidget(self.PlotButton, 13, 1)  # 1-Scan & 2-Scan
+        self.mainLayout.addWidget(self.saveFigButton, 14, 0)
+        self.mainLayout.addWidget(self.clearFigButton, 14, 1)
+
         self.PlotLayout.addWidget(self.receivedDataEdit)
         self.PlotTab.setLayout(self.PlotLayout)
 
-        self.mainLayout.addWidget(self.stopShowingButton, 13, 0, 1, 1)
-        self.mainLayout.addWidget(self.saveReceivedButton, 13, 1, 1, 1)
-        self.mainLayout.addWidget(self.refreshComButton, 14, 0, 1, 1)
-        self.mainLayout.addWidget(self.clearReceivedButton, 14, 1, 1, 1)
+        self.tableWidget.setRowCount(4)  # 设置行数
+        self.tableWidget.setColumnCount(3)  # 设置列数
+        self.ResultLayout.addWidget(self.tableWidget)
+        self.ResultTab.setLayout(self.ResultLayout)
 
-        self.mainLayout.addWidget(self.inputEdit, 15, 2, 1, 6)
-        self.mainLayout.addWidget(self.sendButton, 15, 8)
-        self.mainLayout.addWidget(self.hexShowingCheck, 17, 2, 1, 1)
-        self.mainLayout.addWidget(self.hexSendingCheck, 17, 3, 1, 1)
 
-        self.mainLayout.addWidget(self.clearInputButton, 17, 5, 1, 1)
-        self.mainLayout.addWidget(self.clearCouterButton, 18, 5, 1, 1)
-        self.mainLayout.addWidget(self.timerSendCheck, 18, 2, 1, 1)
-        self.mainLayout.addWidget(self.timerPeriodEdit, 18, 3, 1, 1)
-        self.mainLayout.addWidget(self.sendCountLabel, 19, 7, 1, 1)
-        self.mainLayout.addWidget(self.comStatus, 19, 0, 1, 3)
-        self.mainLayout.addWidget(self.receiveCountLabel, 19, 8, 1, 1)
+        self.mainLayout.addWidget(self.stopShowingButton, 15, 0, 1, 1)
+        self.mainLayout.addWidget(self.saveReceivedButton, 15, 1, 1, 1)
+        self.mainLayout.addWidget(self.refreshComButton, 16, 0, 1, 1)
+        self.mainLayout.addWidget(self.clearReceivedButton, 16, 1, 1, 1)
+
+        self.mainLayout.addWidget(self.inputEdit, 17, 2, 1, 6)
+        self.mainLayout.addWidget(self.sendButton, 17, 8)
+        self.mainLayout.addWidget(self.hexShowingCheck, 19, 2, 1, 1)
+        self.mainLayout.addWidget(self.hexSendingCheck, 19, 3, 1, 1)
+
+        self.mainLayout.addWidget(self.clearInputButton, 19, 5, 1, 1)
+        self.mainLayout.addWidget(self.clearCouterButton, 20, 5, 1, 1)
+        self.mainLayout.addWidget(self.timerSendCheck, 20, 2, 1, 1)
+        self.mainLayout.addWidget(self.timerPeriodEdit, 20, 3, 1, 1)
+        self.mainLayout.addWidget(self.sendCountLabel, 21, 7, 1, 1)
+        self.mainLayout.addWidget(self.comStatus, 21, 0, 1, 3)
+        self.mainLayout.addWidget(self.receiveCountLabel, 21, 8, 1, 1)
         self.mainLayout.setSpacing(5)
 
-        self.setFixedSize(1165, 710)
+        self.setFixedSize(1265, 780)
         self.DataTab.setLayout(self.mainLayout)
 
     def CreateSignalSlot(self):  # 创建逻辑
@@ -301,13 +336,16 @@ class PyQt_Serial(QTabWidget):
 
         self.updateTimer.timeout.connect(self.on_updateTimer)  # 界面刷新
         self.hexShowingCheck.stateChanged.connect(
-        self.on_hexShowingChecked)  # 十六进制显示
+            self.on_hexShowingChecked)  # 十六进制显示
         self.timerPeriodEdit.textChanged.connect(self.on_timerSendChecked)
 
         self.hexSendingCheck.stateChanged.connect(
-        self.on_hexSendingChecked)  # 十六进制发送
+            self.on_hexSendingChecked)  # 十六进制发送
 
         self.urlEdit.textChanged.connect(self.on_setUrl)
+        self.pubTopicEdit.textChanged.connect(self.on_setPubTopic)
+        self.subTopicEdit.textChanged.connect(self.on_setSubTopic)
+
         self.connectButton.clicked.connect(self.mqtt_run)
         self.disconnectButton.clicked.connect(self.mqtt_stop)
 
@@ -333,7 +371,7 @@ class PyQt_Serial(QTabWidget):
         pg.setConfigOption('foreground', 'k')  # 设置背景色
         self.pw = pg.PlotWidget()
         self.pw.showGrid(x=True, y=True)
-        self.mainLayout.addWidget(self.pw, 0, 2, 14, 7)
+        self.mainLayout.addWidget(self.pw, 0, 2, 17, 7)
 
     def on_plot(self):
         timer = QTimer(self)
@@ -348,21 +386,35 @@ class PyQt_Serial(QTabWidget):
             pg.QtGui.QApplication.processEvents()
             self.pw.plot(cmd_list_re, data_list, pen=pg.mkPen(color='r', width=1.5), clear=True,
                          symbol=None)  # symbol设置显示点的形状
-            if (cmd_list_re[-1] == self.U1) and (self.scan_1_finish_flag == 1):
+
+            self.measure_Ip = max(data_list)
+            self.set_high_Ev = max(cmd_list_re)
+            self.set_low_Ev = min(cmd_list_re)
+            if (cmd_list_re[-1] >= self.U1) and (self.scan_1_finish_flag == 1):
                 cmd_list_re.clear()
                 cmdlist.clear()
                 data_list.clear()
                 datalist.clear()
                 self.scan_1_finish_flag = 0
-                QMessageBox.information(self, "完成", "单向扫描完成！")
+                QMessageBox().information(self, "完成", "单向扫描完成！\n"
+                                        + "ip=" + str(self.measure_Ip) + "A\n"
+                                        + "Ep=" + str(self.measure_Ep) + "V\n"
+                                        + "Ah=" + str(self.measure_Ah) + "C\n"
+                                        + "High E(V)=" + str(self.set_high_Ev) + "mV\n"
+                                        + "Low E(V)=" + str(self.set_low_Ev) + "mV\n")
 
-            elif (cmd_list_re[-1] == int(self.U0Edit.text())) and (self.scan_2_finish_flag == 1):
+            elif (cmd_list_re[-1] <= int(self.U0Edit.text())) and (self.scan_2_finish_flag == 1):
                 cmd_list_re.clear()
                 cmdlist.clear()
                 data_list.clear()
                 datalist.clear()
-                self.scan_2_finish_flag == 0
-                QMessageBox.information(self, "完成", "双向扫描完成！")
+                self.scan_2_finish_flag = 0
+                QMessageBox.information(self, "完成", "双向扫描完成！\n"
+                                        + "ip=" + str(self.measure_Ip) + "A\n"
+                                        + "Ep=" + str(self.measure_Ep) + "V\n"
+                                        + "Ah=" + str(self.measure_Ah) + "C\n"
+                                        + "High E(V)=" + str(self.set_high_Ev) + "mV\n"
+                                        + "Low E(V)=" + str(self.set_low_Ev) + "mV\n")
             num = num + 1
         pass
 
@@ -389,6 +441,12 @@ class PyQt_Serial(QTabWidget):
 
     def on_setUrl(self):
         self.broker = self.urlEdit.text()
+
+    def on_setPubTopic(self):
+        self.pubTopic = self.pubTopicEdit.text()
+
+    def on_setSubTopic(self):
+        self.subTopic = self.subTopicEdit.text()
 
     def on_setdu(self):
         self.du = int(self.duEdit.text())
@@ -592,7 +650,7 @@ class PyQt_Serial(QTabWidget):
             self.sendCount += n
         elif self.wifiFlag == 1:
             if len(self.cmdstr) != 0:  # 防止出现空帧
-                self.mqtt_publish(myclient, pub_topic, self.cmdstr)
+                self.mqtt_publish(myclient, self.pubTopic, self.cmdstr)
                 # print(self.cmdstr)
         self.create_cmd_frame()
 
@@ -625,7 +683,7 @@ class PyQt_Serial(QTabWidget):
             self.sendCount += n
         elif self.wifiFlag == 1:
             if len(self.cmdstr) != 0:  # 防止出现空帧
-                self.mqtt_publish(myclient, pub_topic, self.cmdstr)
+                self.mqtt_publish(myclient, self.pubTopic, self.cmdstr)
         self.on_doubleCmdFrame()
 
     def on_scan_1Button(self):
@@ -651,6 +709,10 @@ class PyQt_Serial(QTabWidget):
             self.scan_2_button_flag = 0
 
     def _connect_mqtt(self) -> mqtt_client:
+        self.broker = self.urlEdit.text()
+        self.subTopic = self.subTopicEdit.text()
+        self.pubTopic = self.pubTopicEdit.text()
+
         def on_connect(client, userdata, flags, rc):  # rc的值决定连接成功与否，0->成功
             if rc == 0:
                 print("Connected to MQTT Broker!")
@@ -686,7 +748,7 @@ class PyQt_Serial(QTabWidget):
 
             print(value_list, cmd_list)
 
-        client.subscribe(sub_topic)
+        client.subscribe(self.subTopic)
         client.on_message = on_message
 
     # 发布函数
@@ -698,7 +760,7 @@ class PyQt_Serial(QTabWidget):
         if self.connectFlag == 1:
             myclient = self._connect_mqtt()  # 连接服务器
             self._subscribe(myclient)  # 订阅消息
-            QMessageBox.information(self, "连接提示", ("连接成功！\n且已订阅" + sub_topic + "！"))
+            QMessageBox.information(self, "连接提示", ("连接成功！\n且已订阅" + self.subTopic + "！"))
             self.wifiFlag = 1
             datalist.clear()  # 清空list
             cmdlist.clear()
