@@ -6,6 +6,7 @@
 import binascii
 import re
 import sys
+import datetime
 
 import pyqtgraph as pg
 import pyqtgraph.exporters
@@ -51,7 +52,6 @@ class PyQt_Serial(QTabWidget):
         self.addTab(self.ResultTab, "测试结果")
         self.addTab(self.PlotTab, "数据打印")
 
-
         self.CreateItems()
         self.CreateLayout()
         self.CreateSignalSlot()
@@ -94,6 +94,9 @@ class PyQt_Serial(QTabWidget):
         # set Value
         self.set_high_Ev = 0
         self.set_low_Ev = 0
+
+        # sys time
+        self.sys_time = ""
 
     def CreateItems(self):
         self.com = QSerialPort()
@@ -175,19 +178,19 @@ class PyQt_Serial(QTabWidget):
 
         self.urlLabel = QLabel('URL:')
         self.urlLabel.setFixedHeight(30)
-        self.urlEdit = QLineEdit('mqtt.coplemqtt.xyz')
+        self.urlEdit = QLineEdit('coplemqtthuaweicloud.top')
         self.urlEdit.setFixedHeight(30)
         self.urlEdit.setFixedWidth(200)
 
         self.pub_topicLabel = QLabel('Pub Topic:')
         self.pub_topicLabel.setFixedHeight(30)
-        self.pubTopicEdit = QLineEdit('pub')
+        self.pubTopicEdit = QLineEdit('sub_msg')
         self.pubTopicEdit.setFixedHeight(30)
         self.pubTopicEdit.setFixedWidth(80)
 
         self.sub_topicLabel = QLabel('Sub Topic:')
         self.sub_topicLabel.setFixedHeight(30)
-        self.subTopicEdit = QLineEdit('test')
+        self.subTopicEdit = QLineEdit('test_data')
         self.subTopicEdit.setFixedHeight(30)
         self.subTopicEdit.setFixedWidth(80)
 
@@ -235,8 +238,11 @@ class PyQt_Serial(QTabWidget):
 
         ######## 串口状态显示 ##########
         self.comStatus = QLabel('COM State：COM CLOSE')
+        self.wifiStatus = QLabel('WiFi State：Disconnect')
+
         self.sendCountLabel = QLabel('S cnt：0')
         self.receiveCountLabel = QLabel('R cnt：0')
+
         ######## 串口状态显示 ##########
 
         self.sendTimer = QTimer()
@@ -286,11 +292,25 @@ class PyQt_Serial(QTabWidget):
         self.PlotLayout.addWidget(self.receivedDataEdit)
         self.PlotTab.setLayout(self.PlotLayout)
 
-        self.tableWidget.setRowCount(4)  # 设置行数
-        self.tableWidget.setColumnCount(3)  # 设置列数
+        self.tableWidget.setRowCount(500)  # 设置行数
+        self.tableWidget.setColumnCount(6)  # 设置列数
+
+        # 指定列宽
+        self.tableWidget.horizontalHeader().resizeSection(0, 200)
+        self.tableWidget.horizontalHeader().resizeSection(1, 200)
+        self.tableWidget.horizontalHeader().resizeSection(2, 200)
+        self.tableWidget.horizontalHeader().resizeSection(3, 200)
+        self.tableWidget.horizontalHeader().resizeSection(4, 200)
+        self.tableWidget.horizontalHeader().resizeSection(5, 200)
+
         self.ResultLayout.addWidget(self.tableWidget)
         self.ResultTab.setLayout(self.ResultLayout)
 
+        self.tableWidget.setHorizontalHeaderLabels(
+            ['Time', 'Ip(A)', 'Ep(mV)', 'Ah(C)', 'High_E(mV)', 'Low_E(mV)', '备注'])  # 设置水平表头
+        self.tableWidget.horizontalHeader().setFixedHeight(50)
+        self.tableWidget.horizontalHeader().setStyleSheet(
+            "QHeaderView::section{background-color:rgb(155, 194, 230);font:12pt 'Times';color: black;height:200pt};")
 
         self.mainLayout.addWidget(self.stopShowingButton, 15, 0, 1, 1)
         self.mainLayout.addWidget(self.saveReceivedButton, 15, 1, 1, 1)
@@ -306,12 +326,15 @@ class PyQt_Serial(QTabWidget):
         self.mainLayout.addWidget(self.clearCouterButton, 20, 5, 1, 1)
         self.mainLayout.addWidget(self.timerSendCheck, 20, 2, 1, 1)
         self.mainLayout.addWidget(self.timerPeriodEdit, 20, 3, 1, 1)
-        self.mainLayout.addWidget(self.sendCountLabel, 21, 7, 1, 1)
+
         self.mainLayout.addWidget(self.comStatus, 21, 0, 1, 3)
-        self.mainLayout.addWidget(self.receiveCountLabel, 21, 8, 1, 1)
+        self.mainLayout.addWidget(self.wifiStatus, 22, 0, 1, 3)
+
+        self.mainLayout.addWidget(self.sendCountLabel, 21, 8, 1, 1)
+        self.mainLayout.addWidget(self.receiveCountLabel, 22, 8, 1, 1)
         self.mainLayout.setSpacing(5)
 
-        self.setFixedSize(1265, 780)
+        self.setFixedSize(1265, 790)
         self.DataTab.setLayout(self.mainLayout)
 
     def CreateSignalSlot(self):  # 创建逻辑
@@ -390,6 +413,8 @@ class PyQt_Serial(QTabWidget):
             self.measure_Ip = max(data_list)
             self.set_high_Ev = max(cmd_list_re)
             self.set_low_Ev = min(cmd_list_re)
+            self.sys_time = datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d %H:%M:%S')
+
             if (cmd_list_re[-1] >= self.U1) and (self.scan_1_finish_flag == 1):
                 cmd_list_re.clear()
                 cmdlist.clear()
@@ -397,11 +422,13 @@ class PyQt_Serial(QTabWidget):
                 datalist.clear()
                 self.scan_1_finish_flag = 0
                 QMessageBox().information(self, "完成", "单向扫描完成！\n"
-                                        + "ip=" + str(self.measure_Ip) + "A\n"
-                                        + "Ep=" + str(self.measure_Ep) + "V\n"
-                                        + "Ah=" + str(self.measure_Ah) + "C\n"
-                                        + "High E(V)=" + str(self.set_high_Ev) + "mV\n"
-                                        + "Low E(V)=" + str(self.set_low_Ev) + "mV\n")
+                                          + "time:" + self.sys_time + "\n"
+                                          + "ip=" + str(self.measure_Ip) + "A\n"
+                                          + "Ep=" + str(self.measure_Ep) + "V\n"
+                                          + "Ah=" + str(self.measure_Ah) + "C\n"
+                                          + "High E(V)=" + str(self.set_high_Ev) + "mV\n"
+                                          + "Low E(V)=" + str(self.set_low_Ev) + "mV\n")
+
 
             elif (cmd_list_re[-1] <= int(self.U0Edit.text())) and (self.scan_2_finish_flag == 1):
                 cmd_list_re.clear()
@@ -410,6 +437,7 @@ class PyQt_Serial(QTabWidget):
                 datalist.clear()
                 self.scan_2_finish_flag = 0
                 QMessageBox.information(self, "完成", "双向扫描完成！\n"
+                                        + "time:" + self.sys_time + "\n"
                                         + "ip=" + str(self.measure_Ip) + "A\n"
                                         + "Ep=" + str(self.measure_Ep) + "V\n"
                                         + "Ah=" + str(self.measure_Ah) + "C\n"
@@ -572,18 +600,30 @@ class PyQt_Serial(QTabWidget):
             if self.stopShowingButton.text() == '停止显示':
                 if not self.hexShowingCheck.isChecked():  # 若不是16进制显示
                     receivedData = receivedData.decode(self.encoding, 'ignore')
-                    received_split_str = receivedData.split(',')
-                    # print(type(received_split_str))
-                    cmd_str = received_split_str[0][1:]
-                    value_str = received_split_str[1][:-1]
-                    # print('cmd:', cmd_str, 'value:', value_str)
+                    if receivedData[0] == '{':
+                        received_split_str = receivedData.split(',')
+                        # print(type(received_split_str))
+                        cmd_str = received_split_str[0][1:]
+                        value_str = received_split_str[1][:-1]
+                        # print('cmd:', cmd_str, 'value:', value_str)
 
-                    cmd_list = self.decodeFrame(cmd_str)
-                    value_list = self.decodeFrame(value_str)
-                    print(cmd_list, value_list)
+                        cmd_list = self.decodeFrame(cmd_str)
+                        value_list = self.decodeFrame(value_str)
+                        print(cmd_list, value_list)
 
-                    datalist.extend(value_list)
-                    cmdlist.extend(cmd_list)  # 注意追加的变量
+                        datalist.extend(value_list)
+                        cmdlist.extend(cmd_list)  # 注意追加的变量
+                    else:
+                        if "connected" in receivedData:
+                            QMessageBox.information(self, "WiFi提示", "下位机成功连接WiFi!")
+                            self.wifiStatus.setText('WiFi State：Connect')
+                            print("YES")
+                        elif "Clear" in receivedData:
+                            QMessageBox.information(self, "WiFi提示", "下位机成功断开WiFi!")
+                            self.wifiStatus.setText('WiFi State：Disconnect')
+                            self.on_closeSerial()
+                            self.on_openSerial()
+                            print("Disconnect!")
 
                     self.receivedDataEdit.insertPlainText(receivedData)  # 回显
                 else:
@@ -737,6 +777,7 @@ class PyQt_Serial(QTabWidget):
     def _subscribe(self, client: mqtt_client):  # 订阅函数
         def on_message(client, userdata, msg):  # 收到消息调用
             receivedData = msg.payload.decode(self.encoding, 'ignore')  # 使用MQTT接收，加判断
+
             received_split_str = receivedData.split(',')
             cmd_str = received_split_str[0][1:]
             value_str = received_split_str[1][:-1]
@@ -747,6 +788,7 @@ class PyQt_Serial(QTabWidget):
             cmdlist.extend(cmd_list)  # 注意追加的变量
 
             print(value_list, cmd_list)
+            self.receivedDataEdit.insertPlainText(receivedData)  # 回显
 
         client.subscribe(self.subTopic)
         client.on_message = on_message
@@ -768,7 +810,7 @@ class PyQt_Serial(QTabWidget):
         elif self.connectFlag == 0:
             QMessageBox.information(self, "连接提示", "断开连接!")
             myclient.disconnect()
-            myclient.loop_stop(force=False)
+            myclient.loop_stop(force=True)
             self.connectFlag = 1
         self.connectButton.setEnabled(False)
         self.disconnectButton.setEnabled(True)
